@@ -64,6 +64,8 @@ void FundamentalMetropolisScalarUpdater::execute(environment_t& environment) {
 	double mu = environment.configurations.get<double>("FundamentalMetropolisScalarUpdater::scalar_mass");
         double lambda = environment.configurations.get<double>("FundamentalMetropolisScalarUpdater::quartic_coupling");
 	double lambda_8 = environment.configurations.get<double>("FundamentalMetropolisScalarUpdater::adjoint_quartic_coupling");
+	double lambda_mixed = environment.configurations.get<double>("FundamentalMetropolisScalarUpdater::mixed_coupling");
+	double lambda_matrix = environment.configurations.get<double>("FundamentalMetropolisScalarUpdater::adjoin_matrix_coupling");
 	double epsilon = environment.configurations.get<double>("FundamentalMetropolisScalarUpdater::epsilon");
         FundamentalScalarAction* action = new FundamentalScalarAction(mu, lambda, lambda_8);
 
@@ -87,11 +89,10 @@ void FundamentalMetropolisScalarUpdater::execute(environment_t& environment) {
 		deltaE += action->energy(environment);
 		if (isOutputProcess()) std::cout << "Consistency test of the action " << deltaMet << " " << deltaE << std::endl; 
 	}*/
-
-        for (scalar_field = environment.fundamental_scalar_fields.begin(); scalar_field < environment.fundamental_scalar_fields.end(); ++scalar_field) { 
-		for (int block = 0; block < 2; ++block) {
+	for (int block = 0; block < 2; ++block) {
 #pragma omp parallel for reduction(+:acceptance)
-			for (int site = 0; site < scalar_field->localsize; ++site) {
+		for (int site = 0; site < scalar_field->localsize; ++site) {
+			for (scalar_field = environment.fundamental_scalar_fields.begin(); scalar_field < environment.fundamental_scalar_fields.end(); ++scalar_field) {
 				//White/Black partitioning
 				if ((Layout::globalIndexX(site) + Layout::globalIndexY(site) + Layout::globalIndexZ(site) + Layout::globalIndexT(site)) % 2 == block) {
 					FundamentalVector kinetic_coupling = action->getKineticCoupling(environment.getFundamentalLattice(), *scalar_field, site);
@@ -105,7 +106,7 @@ void FundamentalMetropolisScalarUpdater::execute(environment_t& environment) {
 							proposal[c] += epsilon*std::complex<real_t>((*randomNormal[omp_get_thread_num()])(), (*randomNormal[omp_get_thread_num()])());
 #endif
 						}
-						real_t delta = action->deltaEnergy(kinetic_coupling, (*scalar_field)[site], proposal);
+						real_t delta = action->deltaEnergy(kinetic_coupling, (*scalar_field)[site], proposal, environment.fundamental_scalar_fields, environment.adjoint_scalar_fields);
 						//Do the accept/reject metropolis
         					if (delta < 0.) {
 					                ++acceptance;
@@ -141,6 +142,8 @@ void FundamentalMetropolisScalarUpdater::registerParameters(po::options_descript
                 ("FundamentalMetropolisScalarUpdater::scalar_mass", po::value<double>()->default_value(0.0), "set the value of the fundamental scalar mass m*m")
                 ("FundamentalMetropolisScalarUpdater::quartic_coupling", po::value<double>()->default_value(0.0), "set the value of the quartic coupling lambda")
 		("FundamentalMetropolisScalarUpdater::adjoint_quartic_coupling", po::value<double>()->default_value(0.0), "set the value of the adjoint quartic coupling lambda")
+		("FundamentalMetropolisScalarUpdater::adjoint_matrix_coupling", po::value<double>()->default_value(0.0), "set the value of the adjoint matrix lambda")
+		("FundamentalMetropolisScalarUpdater::mixed_coupling", po::value<double>()->default_value(0.0), "set the value of the mixed coupling lambda")
 		("FundamentalMetropolisScalarUpdater::epsilon", po::value<double>()->default_value(0.1), "set the value of epsilon for the random update")
                 ("FundamentalMetropolisScalarUpdater::number_of_hits", po::value<unsigned int>()->default_value(1), "set the number of the trials for the multihit metropolis")
                 ;
